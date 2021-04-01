@@ -23,7 +23,7 @@ import os
 import FreeCAD
 import FreeCADGui as Gui
 from .features import ViewProviderGear, InvoluteGear, InvoluteGearRack
-from .features import CycloidGear, BevelGear, CrownGear, WormGear, TimingGear, LanternGear, HypoCycloidGear
+from .features import CycloidGear, BevelGear, CrownGear, WormGear, TimingGear, TimingGearT, LanternGear, HypoCycloidGear
 
 
 class BaseCommand(object):
@@ -138,6 +138,15 @@ class CreateTimingGear(BaseCommand):
     Pixmap = os.path.join(BaseCommand.ICONDIR, 'timinggear.svg')
     MenuText = 'Timing gear'
     ToolTip = 'Create a Timing gear'
+
+
+class CreateTimingGearT(BaseCommand):
+    NAME = "timinggearT"
+    GEAR_FUNCTION = TimingGearT
+    Pixmap = os.path.join(BaseCommand.ICONDIR, 'timinggearT.svg')
+    MenuText = 'Timing gear (T)'
+    ToolTip = 'Create a Timing gear (T)'
+
 
 class CreateLanternGear(BaseCommand):
     NAME = "lanterngear"

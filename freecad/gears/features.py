@@ -819,7 +819,7 @@ class TimingGear(BaseGear):
         # ((r5 - r_34) * cos(phi4) - m_23y) ** 2 - \
         # ((r_34 + r_23) ** 2), phi4)
 
-        
+
         phi4 = 2*np.arctan((-2*offset*r5 + 2*offset*r_34 + np.sqrt(-m_23y**4 - 2*m_23y**2*offset**2 + \
         2*m_23y**2*r5**2 - 4*m_23y**2*r5*r_34 + 2*m_23y**2*r_23**2 + \
         4*m_23y**2*r_23*r_34 + 4*m_23y**2*r_34**2 - offset**4 + 2*offset**2*r5**2 - \
@@ -879,6 +879,139 @@ class TimingGear(BaseGear):
         pass
 
 
+class TimingGearT(BaseGear):
+
+    """FreeCAD gear rack
+
+    pitch: Zahnteilung
+    angle: Zahnwinkel
+    h:     Zahnhöhe
+    H:     Riemenhöhe
+    rf:    Verrundung Fuß
+    rk:    Verrunding Kopf
+    width: Zahnbreite Zahnriemenkopf
+    """
+    data = {"T5":  {'pitch': 5.0, 'angle': 40,
+                    'ht': 1.2, 'h': 2.20,
+                    'rt': 0.555, 'rf': 1.0,
+                    'width': 1.83
+                    },
+            "AT5":  {'pitch': 5.0, 'angle': 50,
+                     'ht': 1.20, 'h': 2.70,
+                     'rt': 0.85, 'rf': 1.52,
+                     'width': 2.5
+                     },
+            "AT10":  {'pitch': 10.0,  'angle': 50,
+                      'ht': 2.50, 'h': 4.50,
+                      'rt': 1.44,  'rf': 2.57,
+                      'width': 5
+                      }
+            }
+
+    def __init__(self, obj):
+        super(TimingGearT, self).__init__(obj)
+        obj.addProperty("App::PropertyInteger",
+                        "teeth", "gear_parameter", "number of teeth")
+        obj.addProperty(
+            "App::PropertyEnumeration", "type", "gear_parameter", "type of timing-gear")
+        obj.addProperty(
+            "App::PropertyLength", "height", "gear_parameter", "height")
+        obj.addProperty(
+            "App::PropertyLength", "pitch", "computed", "pitch off gear", 1)
+        obj.addProperty(
+            "App::PropertyLength", "h", "computed", "radial height of teeth", 1)
+        obj.addProperty(
+            "App::PropertyLength", "u", "computed", "radial difference between pitch \
+            diameter and head of gear", 1)
+        obj.addProperty(
+            "App::PropertyLength", "r0", "computed", "radius of first arc", 1)
+        obj.addProperty(
+            "App::PropertyLength", "r1", "computed", "radius of second arc", 1)
+        obj.addProperty(
+            "App::PropertyLength", "rs", "computed", "radius of third arc", 1)
+        obj.addProperty(
+            "App::PropertyLength", "offset", "computed", "x-offset of second arc-midpoint", 1)
+        obj.teeth = 15
+        obj.type = ['T5', 'AT5', 'AT5']
+        obj.height = '5. mm'
+
+        self.obj = obj
+        obj.Proxy = self
+
+    def execute(self, fp):
+        # Variable names based on "BRECO Komponenten"
+        # Some vendors use different names, beware!
+        # All values based on the "Normallücke"
+        # SE and 0 Lücke are only used for special applications.
+        # d0 ... effective diameter
+        # dk ... head diameter (Kopfkreis)
+        # df ... foot diameter (Fußkreis)
+        tp = fp.type
+        tt_data = self.data[tp]
+        pitch = fp.pitch = tt_data["pitch"]
+        angle = fp.angle = tt_data["angle"]
+        ht = fp.ht = tt_data["ht"]
+        h = fp.h = tt_data["h"]
+        r_12 = fp.rt = tt_data["rt"]
+        r_23 = fp.rf = tt_data["rf"]
+        width = fp.width = tt_data["width"]
+
+        d0 = pitch * fp.teeth
+        dk = d0 - (h - ht)
+        dt = dk - 2 * ht
+        phi = 180 / fp.teeth #  half a tooth
+
+    # ab hier alt
+
+        phi_12 = 1
+        rp = pitch * fp.teeth / np.pi / 2.
+        r4 = r5 = rp
+
+        phi4 =10 # dummy
+        phi5 = np.pi / fp.teeth
+
+        x2 = np.array([-r_12 * np.sin(phi_12), m_12[1] - r_12 * np.cos(phi_12)])
+        x3 = m_34 + r_34 / (r_34 + r_23) * (m_23 - m_34)
+        x4 = r4 * np.array([-np.sin(phi4), np.cos(phi4)])
+
+        ref = reflection(-phi5 - np.pi / 2)
+        x6 = ref(x4)
+        mir = np.array([-1., 1.])
+        xn2 = mir * x2
+        xn3 = mir * x3
+        xn4 = mir * x4
+
+        mn_34 = mir * m_34
+        mn_23 = mir * m_23
+
+        arc_1 = part_arc_from_points_and_center(xn4, xn3, mn_34).toShape()
+        arc_2 = part_arc_from_points_and_center(xn3, xn2, mn_23).toShape()
+        arc_3 = part_arc_from_points_and_center(xn2, x2, m_12).toShape()
+        arc_4 = part_arc_from_points_and_center(x2, x3, m_23).toShape()
+        arc_5 = part_arc_from_points_and_center(x3, x4, m_34).toShape()
+        arc_6 = part_arc_from_points_and_center(x4, x6, np.array([0. ,0.])).toShape()
+
+        wire = Part.Wire([arc_1, arc_2, arc_3, arc_4, arc_5, arc_6])
+        wires = [wire]
+        rot = App.Matrix()
+        rot.rotateZ(np.pi * 2 / fp.teeth)
+        for _ in range(fp.teeth - 1):
+            wire = wire.transformGeometry(rot)
+            wires.append(wire)
+
+        wi = Part.Wire(wires)
+        if fp.height.Value == 0:
+            fp.Shape = wi
+        else:
+            fp.Shape = Part.Face(wi).extrude(App.Vector(0, 0, fp.height))
+
+    def __getstate__(self):
+        pass
+
+    def __setstate__(self, state):
+        pass
+
+
 class LanternGear(BaseGear):
     def __init__(self, obj):
         super(LanternGear, self).__init__(obj)
@@ -898,10 +1031,10 @@ class LanternGear(BaseGear):
         obj.teeth = 15
         obj.module = '1. mm'
         obj.bolt_radius = '1 mm'
-        
+
         obj.height = '5. mm'
         obj.num_profiles = 10
-        
+
         self.obj = obj
         obj.Proxy = self
 
